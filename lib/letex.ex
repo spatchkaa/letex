@@ -161,29 +161,30 @@ defmodule Letex do
   def do_free(nil), do: :ok
 
   def do_free(agent) do
+    {children, parent} =
+      Agent.get(agent, fn state ->
+        {Keyword.get(state, :__child_state_agents__), Keyword.get(state, :__parent_state_agent__)}
+      end)
+
     # Free all children recursively
-    agent
-    |> Agent.get(fn state -> Keyword.get(state, :__child_state_agents__) end)
-    |> Enum.each(&do_free/1)
+    Enum.each(children, &do_free/1)
 
     # Remove this agent from its parents list of children
-    agent
-    |> Agent.get(fn state -> Keyword.get(state, :__parent_state_agent__) end)
-    |> case do
-      nil ->
-        :ok
-
-      pid ->
-        Agent.update(pid, fn state ->
-          Keyword.merge(state, [
-            {:__child_state_agents__,
-             Enum.filter(Keyword.get(state, :__child_state_agents__), &(&1 != agent))}
-          ])
-        end)
-    end
+    remove_from_parent(parent, agent)
 
     # Stop the current agent
     Agent.stop(agent)
+  end
+
+  defp remove_from_parent(nil, _), do: :ok
+
+  defp remove_from_parent(parent, child) do
+    Agent.update(parent, fn state ->
+      Keyword.merge(state, [
+        {:__child_state_agents__,
+         Enum.filter(Keyword.get(state, :__child_state_agents__), &(&1 != child))}
+      ])
+    end)
   end
 
   @doc """
